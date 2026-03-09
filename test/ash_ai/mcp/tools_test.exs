@@ -16,6 +16,36 @@ defmodule AshAi.Mcp.ToolsTest do
   @opts_with_meta [tools: [:list_artists_with_meta], otp_app: :ash_ai]
   @opts_with_ui [tools: [:list_artists_with_ui], otp_app: :ash_ai]
 
+  defmodule GetByIdResource do
+    use Ash.Resource, domain: GetByIdDomain, data_layer: Ash.DataLayer.Ets
+
+    attributes do
+      uuid_v7_primary_key :id, writable?: true
+      attribute :name, :string, public?: true
+    end
+
+    actions do
+      defaults [:read, :create]
+      default_accept [:id, :name]
+
+      read :get_by_id do
+        get_by :id
+      end
+    end
+  end
+
+  defmodule GetByIdDomain do
+    use Ash.Domain, extensions: [AshAi]
+
+    resources do
+      resource GetByIdResource
+    end
+
+    tools do
+      tool :get_test_resource, GetByIdResource, :get_by_id
+    end
+  end
+
   describe "tools/list" do
     test "returns available MCP tools" do
       session_id = initialize_and_get_session_id(@opts)
@@ -78,6 +108,18 @@ defmodule AshAi.Mcp.ToolsTest do
 
       refute Map.has_key?(tool_without_meta, "_meta")
     end
+
+    test "read action arguments are exposed at top level for get_by_id tools" do
+      session_id = initialize_and_get_session_id([tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]])
+
+      response = list_tools(session_id, [tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]])
+      body = decode_response(response)
+
+      [tool] = body["result"]["tools"]
+      assert tool["inputSchema"]["properties"]["id"]["type"] == "string"
+      refute Map.has_key?(tool["inputSchema"]["properties"], "input")
+      assert "id" in tool["inputSchema"]["required"]
+    end
   end
 
   describe "tools/call" do
@@ -136,6 +178,31 @@ defmodule AshAi.Mcp.ToolsTest do
       assert body["jsonrpc"] == "2.0"
       assert body["error"]["code"] == -32_602
       assert body["error"]["message"] == "Tool not found: non_existent_tool"
+    end
+
+    test "successfully executes get_by_id tool with top-level id argument" do
+      session_id = initialize_and_get_session_id([tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]])
+
+      record =
+        GetByIdResource
+        |> Ash.Changeset.for_create(:create, %{name: "Top Level"})
+        |> Ash.create!(domain: GetByIdDomain)
+
+      response =
+        call_tool(
+          session_id,
+          "get_test_resource",
+          %{"id" => record.id},
+          [tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]]
+        )
+
+      body = decode_response(response)
+
+      assert response.status == 200
+      assert body["result"]["isError"] == false
+      assert %{"result" => %{"content" => [%{"type" => "text", "text" => text}]}} = body
+      assert [%{"id" => id, "name" => "Top Level"}] = Jason.decode!(text)
+      assert id == record.id
     end
   end
 
