@@ -15,9 +15,15 @@ defmodule AshAi.Mcp.ToolsTest do
   @opts [tools: [:list_artists], otp_app: :ash_ai]
   @opts_with_meta [tools: [:list_artists_with_meta], otp_app: :ash_ai]
   @opts_with_ui [tools: [:list_artists_with_ui], otp_app: :ash_ai]
+  @get_by_id_opts [
+    tools: [:get_test_resource],
+    actions: [{AshAi.Mcp.ToolsTest.GetByIdResource, [:get_by_id]}]
+  ]
 
   defmodule GetByIdResource do
-    use Ash.Resource, domain: GetByIdDomain, data_layer: Ash.DataLayer.Ets
+    use Ash.Resource,
+      domain: AshAi.Mcp.ToolsTest.GetByIdDomain,
+      data_layer: Ash.DataLayer.Ets
 
     attributes do
       uuid_v7_primary_key :id, writable?: true
@@ -38,11 +44,11 @@ defmodule AshAi.Mcp.ToolsTest do
     use Ash.Domain, extensions: [AshAi]
 
     resources do
-      resource GetByIdResource
+      resource AshAi.Mcp.ToolsTest.GetByIdResource
     end
 
     tools do
-      tool :get_test_resource, GetByIdResource, :get_by_id
+      tool :get_test_resource, AshAi.Mcp.ToolsTest.GetByIdResource, :get_by_id
     end
   end
 
@@ -110,9 +116,9 @@ defmodule AshAi.Mcp.ToolsTest do
     end
 
     test "read action arguments are exposed at top level for get_by_id tools" do
-      session_id = initialize_and_get_session_id([tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]])
+      session_id = initialize_and_get_session_id(@get_by_id_opts)
 
-      response = list_tools(session_id, [tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]])
+      response = list_tools(session_id, @get_by_id_opts)
       body = decode_response(response)
 
       [tool] = body["result"]["tools"]
@@ -181,19 +187,19 @@ defmodule AshAi.Mcp.ToolsTest do
     end
 
     test "successfully executes get_by_id tool with top-level id argument" do
-      session_id = initialize_and_get_session_id([tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]])
+      session_id = initialize_and_get_session_id(@get_by_id_opts)
 
       record =
         GetByIdResource
         |> Ash.Changeset.for_create(:create, %{name: "Top Level"})
-        |> Ash.create!(domain: GetByIdDomain)
+        |> Ash.create!(domain: AshAi.Mcp.ToolsTest.GetByIdDomain)
 
       response =
         call_tool(
           session_id,
           "get_test_resource",
           %{"id" => record.id},
-          [tools: [:get_test_resource], actions: [{GetByIdResource, [:get_by_id]}]]
+          @get_by_id_opts
         )
 
       body = decode_response(response)
@@ -288,7 +294,10 @@ defmodule AshAi.Mcp.ToolsTest do
   end
 
   defp call_tool(session_id, tool_name, params, opts) do
-    request_params = Map.put(params, "name", tool_name)
+    request_params = %{
+      "name" => tool_name,
+      "arguments" => params
+    }
 
     conn(:post, "/", %{"method" => "tools/call", "id" => "call_1", "params" => request_params})
     |> put_req_header("mcp-session-id", session_id)
