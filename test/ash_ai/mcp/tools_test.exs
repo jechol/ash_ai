@@ -115,16 +115,17 @@ defmodule AshAi.Mcp.ToolsTest do
       refute Map.has_key?(tool_without_meta, "_meta")
     end
 
-    test "read action arguments are exposed at top level for get_by_id tools" do
+    test "read action arguments are exposed under input for get_by_id tools" do
       session_id = initialize_and_get_session_id(@get_by_id_opts)
 
       response = list_tools(session_id, @get_by_id_opts)
       body = decode_response(response)
 
       [tool] = body["result"]["tools"]
-      assert tool["inputSchema"]["properties"]["id"]["type"] == "string"
-      refute Map.has_key?(tool["inputSchema"]["properties"], "input")
-      assert "id" in tool["inputSchema"]["required"]
+      assert tool["inputSchema"]["properties"]["input"]["type"] == "object"
+      assert tool["inputSchema"]["properties"]["input"]["properties"]["id"]["type"] == "string"
+      assert "input" in tool["inputSchema"]["required"]
+      assert "id" in tool["inputSchema"]["properties"]["input"]["required"]
     end
   end
 
@@ -186,7 +187,7 @@ defmodule AshAi.Mcp.ToolsTest do
       assert body["error"]["message"] == "Tool not found: non_existent_tool"
     end
 
-    test "successfully executes get_by_id tool with top-level id argument" do
+    test "successfully executes get_by_id tool with input.id argument" do
       session_id = initialize_and_get_session_id(@get_by_id_opts)
 
       record =
@@ -198,7 +199,7 @@ defmodule AshAi.Mcp.ToolsTest do
         call_tool(
           session_id,
           "get_test_resource",
-          %{"id" => record.id},
+          %{"input" => %{"id" => record.id}},
           @get_by_id_opts
         )
 

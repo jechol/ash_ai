@@ -70,15 +70,7 @@ defmodule AshAi.Tools do
     actor = context[:actor]
     tenant = context[:tenant]
 
-    client_input =
-      case action.type do
-        :read ->
-          arguments
-          |> Map.take(valid_action_inputs(resource, action))
-
-        _ ->
-          arguments["input"] || %{}
-      end
+    client_input = arguments["input"] || %{}
 
     opts = [domain: domain, actor: actor, tenant: tenant, context: context[:context] || %{}]
 
@@ -524,36 +516,27 @@ defmodule AshAi.Tools do
     required_action_arguments =
       AshAi.OpenApi.required_write_attributes(resource, action.arguments, action)
 
-    {base_properties, required_properties} =
-      case action.type do
-        :read ->
-          {properties, Enum.uniq(required_action_arguments ++ required_tool_arguments)}
-
-        _ ->
-          props_with_input =
-            if Enum.empty?(properties) do
-              %{}
-            else
-              %{
-                input: %{
-                  type: :object,
-                  properties: properties,
-                  additionalProperties: false,
-                  required: Enum.uniq(required_action_arguments ++ required_tool_arguments)
-                }
-              }
-            end
-
-          {props_with_input, Map.keys(props_with_input)}
+    props_with_input =
+      if Enum.empty?(properties) do
+        %{}
+      else
+        %{
+          input: %{
+            type: :object,
+            properties: properties,
+            additionalProperties: false,
+            required: Enum.uniq(required_action_arguments ++ required_tool_arguments)
+          }
+        }
       end
 
     %{
       type: :object,
       properties:
-        add_action_specific_properties(base_properties, resource, action, action_parameters,
+        add_action_specific_properties(props_with_input, resource, action, action_parameters,
           strict?: strict?
         ),
-      required: required_properties,
+      required: Map.keys(props_with_input),
       additionalProperties: false
     }
     |> Jason.encode!()
